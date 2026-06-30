@@ -86,7 +86,7 @@ tailwind.config = { theme: { extend: {
 const CONFIG = {
   eventName: "FeTNA 2026",
   eventDates: "July 2–4, 2026",
-  hub: { name:"NJ Expo", lat:40.5188, lng:-74.3294 },
+  hub: { name:"NJ Expo", lat:40.50013, lng:-74.34700 },
   driverCode: "fetna26",     // simple gate so only drivers open the driver console
   staleAfterSec: 12,         // mark a vehicle "last seen" after this many seconds of silence
   writeIntervalMs: 3500,     // how often a driver phone pushes its location
@@ -107,20 +107,188 @@ const ROUTES = [
 
 /* 4) STOPS — simplified pickup/drop points (match the color-code sheet) */
 const STOPS = [
-  { name:"Sheraton",  lat:40.5205, lng:-74.3470, route:"A" },
-  { name:"HGI",       lat:40.5360, lng:-74.3450, route:"B" },
-  { name:"Courtyard", lat:40.5420, lng:-74.3380, route:"C" },
+  { name:"Sheraton",  lat:40.51931, lng:-74.34010, route:"A" },
+  { name:"HGI",       lat:40.52229, lng:-74.33813, route:"B" },
+  { name:"Courtyard", lat:40.52979, lng:-74.33257, route:"C" },
 ];
 
 /* 5) VEHICLES — default fleet; admin can add/edit (syncs via relay). */
 let VEHICLES = [
   { id:"A1", label:"A1 · Sheraton Express", type:"bus", route:"A" },
-  { id:"A2", label:"A2 · Sheraton Express", type:"bus", route:"A" },
-  { id:"A3", label:"A3 · Surge / Flex",     type:"bus", route:"A" },
+  { id:"A2", label:"A2 · Sheraton Express", type:"van", route:"A" },
   { id:"B1", label:"B1 · HGI + Courtyard",  type:"bus", route:"B" },
-  { id:"B2", label:"B2 · HGI + Courtyard",  type:"bus", route:"B" },
-  { id:"SB", label:"SB · Standby / ADA",    type:"bus", route:"C" },
+  { id:"B2", label:"B2 · HGI + Courtyard",  type:"van", route:"B" },
+  { id:"SB", label:"SB · Standby / ADA",    type:"van", route:"C" },
 ];
+/* Fleet summary text — computed live from VEHICLES, never goes stale when the roster changes */
+function fleetCounts(){
+  const buses=VEHICLES.filter(v=>v.type==='bus').length, vans=VEHICLES.filter(v=>v.type==='van').length;
+  return { buses, vans, total: VEHICLES.length };
+}
+function fleetSummaryText(){
+  const c=fleetCounts();
+  if(lang==='ta') return `அனைத்து வாகனங்களும் (${c.buses} பேருந்து · ${c.vans} வேன்)`;
+  return `All shuttles — ${c.buses} bus${c.buses===1?'':'es'} · ${c.vans} van${c.vans===1?'':'s'}`;
+}
+function fleetHeaderSub(){
+  const n=VEHICLES.length;
+  return lang==='ta' ? `${n} வாகனங்களின் நேரலை இருப்பிடம்` : `Live location of all ${n} shuttles`;
+}
+
+/* 6) STATIC CONVENTION SCHEDULE & BRANDING (from the official flyer) ----- */
+const CONVENTION = {
+  title: "FeTNA 39th TAMIL CONVENTION 2026",
+  venue: "NJ EXPO, 97 Sunfield Ave, Edison, NJ 08837",
+  frequency: "Every 15 Mins",
+  reminder: "Please arrive at your shuttle pick up points 5 minutes early to secure your seat.",
+  hotline: "+1 908 350 0098",
+  emergency: "732 692 7594",
+  trackingUrl: "fetna-convention.org/shuttle",
+};
+
+/* 7) SERVICE SCHEDULE WINDOWS (from the flyer — used for "In Service" vs "Not started") */
+const SERVICE_WINDOWS = [
+  ["2026-07-02T08:00:00","2026-07-02T12:00:00"],
+  ["2026-07-02T17:00:00","2026-07-03T01:00:00"],
+  ["2026-07-03T08:00:00","2026-07-03T12:00:00"],
+  ["2026-07-03T21:00:00","2026-07-04T01:00:00"],
+  ["2026-07-04T08:00:00","2026-07-04T12:00:00"],
+  ["2026-07-04T21:00:00","2026-07-05T01:00:00"],
+];
+function inServiceWindow(now){
+  now = now || new Date();
+  return SERVICE_WINDOWS.some(([s,e])=> now>=new Date(s) && now<=new Date(e));
+}
+
+/* 8) LOCALIZED POINT-TO-POINT NAVIGATION DATA MESH (static, pre-calculated — no map API calls) */
+const ROUTE_WAYPOINTS = {
+  EXPO_TO_SHERATON: [
+    {coords:[40.50013,-74.34700], remainingDist:1.6, remainingTime:4, label:"NJ Expo"},
+    {coords:[40.50110,-74.34710], remainingDist:1.5, remainingTime:3, label:"Sunfield Ave"},
+    {coords:[40.50540,-74.34690], remainingDist:1.2, remainingTime:2, label:"Parkway Lower"},
+    {coords:[40.51120,-74.34580], remainingDist:0.8, remainingTime:2, label:"Parkway Mid"},
+    {coords:[40.51505,-74.34390], remainingDist:0.5, remainingTime:1, label:"Parkway Upper"},
+    {coords:[40.51810,-74.34125], remainingDist:0.2, remainingTime:1, label:"Driveway Turn"},
+    {coords:[40.51931,-74.34010], remainingDist:0.0, remainingTime:0, label:"Sheraton Entrance"},
+  ],
+  SHERATON_TO_EXPO: [
+    {coords:[40.51931,-74.34010], remainingDist:1.6, remainingTime:4, label:"Sheraton Entrance"},
+    {coords:[40.51810,-74.34125], remainingDist:1.4, remainingTime:3, label:""},
+    {coords:[40.51505,-74.34390], remainingDist:1.1, remainingTime:2, label:""},
+    {coords:[40.51120,-74.34580], remainingDist:0.8, remainingTime:2, label:""},
+    {coords:[40.50540,-74.34690], remainingDist:0.4, remainingTime:1, label:""},
+    {coords:[40.50110,-74.34710], remainingDist:0.1, remainingTime:1, label:""},
+    {coords:[40.50013,-74.34700], remainingDist:0.0, remainingTime:0, label:"NJ Expo"},
+  ],
+  EXPO_TO_HILTON: [
+    {coords:[40.50013,-74.34700], remainingDist:1.8, remainingTime:4, label:"NJ Expo"},
+    {coords:[40.50540,-74.34690], remainingDist:1.4, remainingTime:3, label:""},
+    {coords:[40.51505,-74.34390], remainingDist:0.7, remainingTime:2, label:""},
+    {coords:[40.51931,-74.34010], remainingDist:0.3, remainingTime:1, label:"Sheraton Intersection"},
+    {coords:[40.52229,-74.33813], remainingDist:0.0, remainingTime:0, label:"Hilton Garden Inn"},
+  ],
+  HILTON_TO_EXPO: [
+    {coords:[40.52229,-74.33813], remainingDist:1.8, remainingTime:5, label:"Hilton Garden Inn"},
+    {coords:[40.51931,-74.34010], remainingDist:1.5, remainingTime:4, label:""},
+    {coords:[40.51505,-74.34390], remainingDist:1.1, remainingTime:2, label:""},
+    {coords:[40.50540,-74.34690], remainingDist:0.4, remainingTime:1, label:""},
+    {coords:[40.50013,-74.34700], remainingDist:0.0, remainingTime:0, label:"NJ Expo"},
+  ],
+  EXPO_TO_COURTYARD: [
+    {coords:[40.50013,-74.34700], remainingDist:2.7, remainingTime:6, label:"NJ Expo"},
+    {coords:[40.50540,-74.34690], remainingDist:2.3, remainingTime:5, label:""},
+    {coords:[40.51505,-74.34390], remainingDist:1.6, remainingTime:3, label:""},
+    {coords:[40.52229,-74.33813], remainingDist:0.9, remainingTime:2, label:"Passing Hilton"},
+    {coords:[40.52550,-74.33640], remainingDist:0.5, remainingTime:2, label:"Ramp Section"},
+    {coords:[40.52810,-74.33410], remainingDist:0.3, remainingTime:1, label:""},
+    {coords:[40.52979,-74.33257], remainingDist:0.0, remainingTime:0, label:"Courtyard Marriott"},
+  ],
+  COURTYARD_TO_EXPO: [
+    {coords:[40.52979,-74.33257], remainingDist:2.9, remainingTime:6, label:"Courtyard Marriott"},
+    {coords:[40.52810,-74.33410], remainingDist:2.6, remainingTime:5, label:""},
+    {coords:[40.52550,-74.33640], remainingDist:2.2, remainingTime:5, label:"Entering Parkway"},
+    {coords:[40.52229,-74.33813], remainingDist:1.8, remainingTime:4, label:"Passing Hilton"},
+    {coords:[40.51505,-74.34390], remainingDist:1.1, remainingTime:2, label:""},
+    {coords:[40.50540,-74.34690], remainingDist:0.4, remainingTime:1, label:""},
+    {coords:[40.50013,-74.34700], remainingDist:0.0, remainingTime:0, label:"NJ Expo"},
+  ],
+  SHERATON_TO_HILTON: [
+    {coords:[40.51931,-74.34010], remainingDist:0.4, remainingTime:2, label:"Sheraton"},
+    {coords:[40.52040,-74.33920], remainingDist:0.2, remainingTime:1, label:""},
+    {coords:[40.52229,-74.33813], remainingDist:0.0, remainingTime:0, label:"Hilton Garden Inn"},
+  ],
+  HILTON_TO_SHERATON: [
+    {coords:[40.52229,-74.33813], remainingDist:0.4, remainingTime:2, label:"Hilton Garden Inn"},
+    {coords:[40.52040,-74.33920], remainingDist:0.2, remainingTime:1, label:""},
+    {coords:[40.51931,-74.34010], remainingDist:0.0, remainingTime:0, label:"Sheraton"},
+  ],
+  SHERATON_TO_COURTYARD: [
+    {coords:[40.51931,-74.34010], remainingDist:1.3, remainingTime:4, label:"Sheraton"},
+    {coords:[40.52229,-74.33813], remainingDist:0.9, remainingTime:3, label:"Passing Hilton"},
+    {coords:[40.52550,-74.33640], remainingDist:0.5, remainingTime:2, label:""},
+    {coords:[40.52810,-74.33410], remainingDist:0.3, remainingTime:1, label:""},
+    {coords:[40.52979,-74.33257], remainingDist:0.0, remainingTime:0, label:"Courtyard Marriott"},
+  ],
+  COURTYARD_TO_SHERATON: [
+    {coords:[40.52979,-74.33257], remainingDist:1.3, remainingTime:4, label:"Courtyard Marriott"},
+    {coords:[40.52810,-74.33410], remainingDist:1.0, remainingTime:3, label:""},
+    {coords:[40.52550,-74.33640], remainingDist:0.6, remainingTime:2, label:""},
+    {coords:[40.52229,-74.33813], remainingDist:0.2, remainingTime:1, label:"Passing Hilton"},
+    {coords:[40.51931,-74.34010], remainingDist:0.0, remainingTime:0, label:"Sheraton"},
+  ],
+  HILTON_TO_COURTYARD: [
+    {coords:[40.52229,-74.33813], remainingDist:1.1, remainingTime:3, label:"Hilton Garden Inn"},
+    {coords:[40.52550,-74.33640], remainingDist:0.7, remainingTime:2, label:"Woodbridge Ave Intersection"},
+    {coords:[40.52810,-74.33410], remainingDist:0.3, remainingTime:1, label:""},
+    {coords:[40.52979,-74.33257], remainingDist:0.0, remainingTime:0, label:"Courtyard Marriott"},
+  ],
+  COURTYARD_TO_HILTON: [
+    {coords:[40.52979,-74.33257], remainingDist:1.1, remainingTime:3, label:"Courtyard Marriott"},
+    {coords:[40.52810,-74.33410], remainingDist:0.8, remainingTime:2, label:""},
+    {coords:[40.52550,-74.33640], remainingDist:0.4, remainingTime:1, label:""},
+    {coords:[40.52229,-74.33813], remainingDist:0.0, remainingTime:0, label:"Hilton Garden Inn"},
+  ],
+};
+/* maps the driver's chosen From/To (NJ Expo, Sheraton, HGI, Courtyard) onto a ROUTE_WAYPOINTS key */
+const ROUTE_PLACE_KEY = { "NJ Expo":"EXPO", "Sheraton":"SHERATON", "HGI":"HILTON", "Courtyard":"COURTYARD" };
+function routeMeshKey(from,to){
+  const a=ROUTE_PLACE_KEY[from], b=ROUTE_PLACE_KEY[to];
+  if(!a||!b||a===b) return null;
+  const key=`${a}_TO_${b}`;
+  return ROUTE_WAYPOINTS[key] ? key : null;
+}
+
+/* 9) SEGMENT-SNAPPING LOCAL ETA ENGINE — Haversine snap-to-nearest-waypoint, no API calls */
+const SegmentETALogicEngine = {
+  getHaversineDistance: (lat1, lon1, lat2, lon2) => {
+    const R = 3958.8; // Earth's radius in miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  },
+  getLiveRouteETA: (currentLat, currentLon, activeRouteArray) => {
+    if (!activeRouteArray || activeRouteArray.length === 0) return null;
+    let closestNode = activeRouteArray[0], minDistance = Infinity;
+    for (let i = 0; i < activeRouteArray.length; i++) {
+      const d = SegmentETALogicEngine.getHaversineDistance(
+        currentLat, currentLon, activeRouteArray[i].coords[0], activeRouteArray[i].coords[1]
+      );
+      if (d < minDistance) { minDistance = d; closestNode = activeRouteArray[i]; }
+    }
+    return closestNode.remainingTime;
+  }
+};
+/* computes the live ETA for a vehicle that is mid-trip; returns minutes or null */
+function computeEtaMins(v){
+  if(!v || v.lat==null || v.lng==null || !v.tripFrom || !v.tripTo) return null;
+  const key=routeMeshKey(v.tripFrom,v.tripTo);
+  if(!key) return null;
+  return SegmentETALogicEngine.getLiveRouteETA(v.lat, v.lng, ROUTE_WAYPOINTS[key]);
+}
 
 /* ============================================================
    Boot / state  +  connectivity (Socket.io — your own relay)
@@ -255,7 +423,8 @@ const T={
   riders:{en:"Riders", ta:"பயணிகள்"}, driver:{en:"Driver", ta:"ஓட்டுநர்"}, ops:{en:"Ops", ta:"நிர்வாகம்"},
   live:{en:"LIVE", ta:"நேரலை"},
   all:{en:"All", ta:"அனைத்தும்"}, buses:{en:"Buses", ta:"பேருந்துகள்"}, vans:{en:"Vans", ta:"வேன்கள்"},
-  in_service:{en:"In service", ta:"இயக்கத்தில்"}, on_break:{en:"On break", ta:"இடைவேளை"}, full:{en:"Full", ta:"நிரம்பியது"}, offline:{en:"Offline", ta:"இணைப்பில் இல்லை"},
+  in_service:{en:"In Service", ta:"இயக்கத்தில்"}, on_break:{en:"In break", ta:"இடைவேளை"}, full:{en:"Full", ta:"நிரம்பியது"}, offline:{en:"Offline", ta:"இணைப்பில் இல்லை"},
+  not_started:{en:"Not started", ta:"தொடங்கவில்லை"},
   lastseen:{en:"last seen", ta:"கடைசியாக"}, nearme:{en:"Shuttles near me", ta:"அருகில்"},
   start:{en:"Start sharing location", ta:"இருப்பிடத்தைப் பகிர்"}, stop:{en:"Stop sharing", ta:"பகிர்வை நிறுத்து"},
   pick:{en:"Select your vehicle", ta:"உங்கள் வாகனத்தைத் தேர்ந்தெடுக்கவும்"}, away:{en:"min away", ta:"நிமிடம்"},
@@ -278,16 +447,25 @@ function isStale(v){ return !v.ts || (Date.now()-v.ts)/1000 > CONFIG.staleAfterS
 const LOST_MS = 4*60*1000;
 function effStatus(v){
   if(!v) return "offline";
+  if(v.tripFrom && v.tripTo) return "eta";   // active trip always wins — overrides a pending break (Start Trip override)
   if(v.status==='on_break') return 'on_break';
   if(v.status==='lost') return 'lost';
   // Driver app reports its live signal health. If GPS/internet is degraded, show
   // "signal lost" immediately rather than waiting for the stale timeout.
   if(v.signal && v.signal!=='ok' && v.signal!=='acquiring' && v.signal!=='idle') return 'lost';
   if(isStale(v)){ return (v.ts && (Date.now()-v.ts) < LOST_MS) ? 'lost' : 'offline'; }
-  return v.status||"in_service";
+  if(inServiceWindow()) return 'in_service';
+  return 'not_started';
 }
-function statusStyle(s){ return {in_service:["#E4F2EE","#1F6E5E"],on_break:["#FBEFD7","#9A6B12"],full:["#FBE3E3","#B42318"],lost:["#FBE3E3","#B42318"],offline:["#ECE6DB","#7A6A5C"]}[s]||["#ECE6DB","#7A6A5C"]; }
-function statusLabel(s){ return {in_service:t("in_service"),on_break:t("on_break"),full:t("full"),lost:"⚠ Signal lost",offline:t("offline")}[s]||s; }
+function statusStyle(s){ return {in_service:["#E4F2EE","#1F6E5E"],on_break:["#FBEFD7","#9A6B12"],eta:["#E7F0FE","#1D4ED8"],not_started:["#ECE6DB","#7A6A5C"],full:["#FBE3E3","#B42318"],lost:["#FBE3E3","#B42318"],offline:["#ECE6DB","#7A6A5C"]}[s]||["#ECE6DB","#7A6A5C"]; }
+function statusLabel(s,v){
+  if(s==="eta"){
+    const mins=v?computeEtaMins(v):null;
+    if(mins==null) return lang==='ta'?'பயணத்தில்':'En route';
+    return mins<=0 ? (lang==='ta'?'வந்துவிட்டது':'Arrived') : (lang==='ta'?('ETA '+mins+' நிமி'):('ETA '+mins+' mins'));
+  }
+  return {in_service:t("in_service"),on_break:t("on_break"),not_started:t("not_started"),full:t("full"),lost:"⚠ Signal lost",offline:t("offline")}[s]||s;
+}
 function haversine(a,b,c,d){ const R=6371,dLat=(c-a)*Math.PI/180,dLng=(d-b)*Math.PI/180,la=a*Math.PI/180,lc=c*Math.PI/180; const x=Math.sin(dLat/2)**2+Math.sin(dLng/2)**2*Math.cos(la)*Math.cos(lc); return R*2*Math.asin(Math.sqrt(x)); }
 function vehSVG(type,fill){ fill=fill||"#fff"; const sh=(fill==="#fff")?"rgba(0,0,0,.32)":"rgba(255,255,255,.45)"; return type==="bus"
   ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" fill="${fill}"/><rect x="5" y="6" width="14" height="5" rx="1" fill="${sh}"/><circle cx="7.5" cy="18.5" r="2" fill="${fill}"/><circle cx="16.5" cy="18.5" r="2" fill="${fill}"/></svg>`
@@ -407,6 +585,22 @@ function header(sub){
     <div class="gold-rule"></div>
   </div>`;
 }
+/* Static convention schedule & branding card (from the official flyer) */
+function conventionInfoCard(){
+  return `<div class="max-w-2xl mx-auto px-4 mt-3">
+    <div class="card p-4" style="background:linear-gradient(135deg,#FBF1E5,#FBF5E9);border-color:rgba(194,144,43,.35)">
+      <p class="disp text-[15px] font-extrabold leading-tight" style="color:#6E1023">${CONVENTION.title}</p>
+      <p class="text-[12.5px] mt-1" style="color:#42282c">📍 ${CONVENTION.venue}</p>
+      <p class="text-[12.5px] mt-1"><span class="pill" style="background:#FBEFD7;color:#9A6B12">🔄 Continuous loop — ${CONVENTION.frequency}</span></p>
+      <p class="text-[12px] mt-2" style="color:#7a6a5c">⏰ ${CONVENTION.reminder}</p>
+      <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[12px]" style="color:#42282c">
+        <span>☎ Hotline: <b>${CONVENTION.hotline}</b></span>
+        <span>🚨 Emergency: <b>${CONVENTION.emergency}</b></span>
+      </div>
+      <p class="text-[11.5px] mt-1.5" style="color:#9b8b80">🔗 Live track: ${CONVENTION.trackingUrl}</p>
+    </div>
+  </div>`;
+}
 function modeBanner(){
   if(net.configured && net.connected) return "";
   const msg = !net.configured
@@ -422,13 +616,14 @@ function modeBanner(){
 let map=null, markers={}, stopMarkers=[], userMarker=null, userLoc=null;
 function viewRiders(){
   return `
-  ${header(lang==='ta'?'8 வாகனங்களின் நேரலை இருப்பிடம்':'Live location of all 8 shuttles')}
+  ${header(fleetHeaderSub())}
   ${modeBanner()}
+  ${conventionInfoCard()}
   <div class="max-w-2xl mx-auto px-4 pt-3 pb-28">
     <div class="card px-4 py-2.5 flex items-center gap-2" style="background:#fff">
       <span style="width:10px;height:10px;border-radius:99px;background:#6E1023;display:inline-block"></span>
       <span style="width:10px;height:10px;border-radius:99px;background:#C2902B;display:inline-block;margin-left:-4px"></span>
-      <span class="text-[13.5px] font-semibold ${lang==='ta'?'ta':''}" style="color:#42282c">${lang==='ta'?'அனைத்து வாகனங்களும் (3 பேருந்து · 5 வேன்)':'All shuttles — 3 buses · 5 vans'}</span>
+      <span class="text-[13.5px] font-semibold ${lang==='ta'?'ta':''}" style="color:#42282c">${fleetSummaryText()}</span>
     </div>
 
     <div class="card overflow-hidden mt-3 relative" style="height:48vh;min-height:300px">
@@ -457,6 +652,16 @@ function fitAll(){
   if(userLoc) pts.push([userLoc.lat,userLoc.lng]);
   if(pts.length){ map.fitBounds(L.latLngBounds(pts).pad(0.25)); } else map.setView([CONFIG.hub.lat,CONFIG.hub.lng],14);
 }
+/* Highlighted static routes on the map — Route 1: Sheraton⇄Expo, Route 2: Courtyard+Hilton⇄Expo (per the flyer) */
+function drawStaticRoutes(){
+  if(!map) return;
+  const draw=(key,color)=>{ const wp=ROUTE_WAYPOINTS[key]; if(!wp) return; const pts=wp.map(p=>p.coords);
+    L.polyline(pts,{color:"#ffffff",weight:8,opacity:.9,lineCap:"round",lineJoin:"round"}).addTo(map);   // white casing
+    L.polyline(pts,{color,weight:5,opacity:.9,lineCap:"round",lineJoin:"round"}).addTo(map); };           // colored line on top
+  draw("EXPO_TO_SHERATON", LINES.Sheraton.color);   // Route 1 — orange
+  draw("EXPO_TO_HILTON", LINES.HGI.color);          // Route 2 (leg 1) — blue
+  draw("EXPO_TO_COURTYARD", LINES.Courtyard.color); // Route 2 (leg 2) — yellow
+}
 function initMap(){
   const h=CONFIG.hub;
   map=L.map("map",{zoomControl:true}).setView([h.lat,h.lng],14);
@@ -464,6 +669,7 @@ function initMap(){
   // hub marker (NJ Convention Center) — a regular map pin, not a text box
   const pinSVG=`<svg width="34" height="42" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.7 0 1 4.7 1 11c0 7.5 11 19 11 19s11-11.5 11-19C23 4.7 18.3 0 12 0z" fill="#2A1216" stroke="#E3B23C" stroke-width="1.5"/><circle cx="12" cy="11" r="4.2" fill="#E3B23C"/></svg>`;
   L.marker([h.lat,h.lng],{icon:L.divIcon({className:"",html:pinSVG,iconSize:[34,42],iconAnchor:[17,42]})}).addTo(map).bindTooltip(h.name,{direction:"top",offset:[0,-38]});
+  drawStaticRoutes();
   // stops (skip NJ Convention Center — the hub pin already marks it)
   stopMarkers=STOPS.filter(s=>s.name!=="NJ Convention Center").map(s=>L.circleMarker([s.lat,s.lng],{radius:5,color:ROUTE[s.route]?.color||"#6E1023",fillColor:"#fff",fillOpacity:1,weight:2}).addTo(map).bindTooltip(s.name,{direction:"top"}));
   markers={};
@@ -491,7 +697,7 @@ function renderMarkers(){
     else { markers[v.id]=L.marker([v.lat,v.lng],{icon}).addTo(map).bindTooltip(()=>tip(VEH[v.id]),{direction:"top",offset:[0,-16]}); }
   });
 }
-function tip(v){ if(!v) return ""; const s=effStatus(v); const off=(s==='offline'); const aboard=(!off&&v.onboard!=null&&v.onboard!=="")?` · <b>${v.onboard}</b> aboard`:""; const heading=(!off&&v.tripFrom&&v.tripTo)?`<br><span style="color:#6E1023">🚍 ${v.tripFrom} → ${v.tripTo}</span>`:""; return `<b>${lineName(v)}</b> · ${t("lastseen")} ${ago(v.ts)}<br>${statusLabel(s)}${aboard}${heading}`; }
+function tip(v){ if(!v) return ""; const s=effStatus(v); const off=(s==='offline'); const aboard=(!off&&v.onboard!=null&&v.onboard!=="")?` · <b>${v.onboard}</b> aboard`:""; const heading=(!off&&v.tripFrom&&v.tripTo)?`<br><span style="color:#6E1023">🚍 ${v.tripFrom} → ${v.tripTo}</span>`:""; return `<b>${lineName(v)}</b> · ${t("lastseen")} ${ago(v.ts)}<br>${statusLabel(s,v)}${aboard}${heading}`; }
 function focusVeh(id){ const v=VEH[id]; if(v&&v.lat!=null&&map){ map.setView([v.lat,v.lng],16,{animate:true}); markers[id]?.openTooltip(); } else toast("Shuttle is offline right now","warn"); }
 function renderVehList(){
   const list=$("veh-list"); if(!list) return;
@@ -511,7 +717,7 @@ function renderVehList(){
         <div class="text-[12.5px]" style="color:#9b8b80">${lineName(v)} · ${t("lastseen")} ${ago(v.ts)}</div>
       </div>
       ${dist}
-      <span class="pill" style="background:${bg};color:${fg}">${s!=='offline'?'<span class="pulse" style="width:7px;height:7px;border-radius:99px;background:'+fg+';display:inline-block"></span>':''}${statusLabel(s)}</span>
+      <span class="pill" style="background:${bg};color:${fg}">${s!=='offline'?'<span class="pulse" style="width:7px;height:7px;border-radius:99px;background:'+fg+';display:inline-block"></span>':''}${statusLabel(s,v)}</span>
     </button>`;
   }).join("");
 }
@@ -873,7 +1079,7 @@ function opsFleetRows(){
         ${(!off&&v.tripFrom&&v.tripTo)?`<p class="text-[12.5px] font-semibold" style="color:#6E1023">🚍 ${v.tripFrom} → ${v.tripTo}</p>`:''}
         ${off?`<p class="text-[12px]" style="color:#b08">No driver — awaiting sign-in</p>`:`<p class="text-[12px]" style="color:#9b8b80">${v.lat!=null?v.lat.toFixed(4)+', '+v.lng.toFixed(4):'no fix'} · ${t("lastseen")} ${ago(v.ts)}</p>`}
       </div>
-      <span class="pill" style="background:${bg};color:${fg}">${statusLabel(s)}</span>
+      <span class="pill" style="background:${bg};color:${fg}">${statusLabel(s,v)}</span>
       <button onclick="adminRename('${v.id}')" class="text-[12px] font-bold px-2 py-1 rounded-lg" style="border:1.5px solid rgba(110,16,35,.2);color:#6E1023">Rename</button>
       <button onclick="opsToggle('${v.id}')" class="text-[12px] font-bold px-2 py-1 rounded-lg" style="border:1.5px solid rgba(110,16,35,.2);color:#6E1023">${s==='offline'?'Set live':'Set off'}</button>
     </div>`;
